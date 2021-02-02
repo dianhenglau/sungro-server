@@ -77,7 +77,7 @@ public class Migrator {
                         ")" +
                         "values (" +
                         "'Administrator', '', 'Administrator', '', 'IC', 'Admin', ?, '', 'Active', " +
-                        "null, ?" +
+                        "1, ?" +
                         ")"
         );
 
