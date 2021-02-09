@@ -21,6 +21,12 @@ public class Repo implements sungro.api.Repo {
         ResultForGetManyUsers result = new ResultForGetManyUsers();
 
         try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForGetManyUsers.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
             QueryBuilder queryData = new QueryBuilder();
 
             queryData.appendSelect(
@@ -47,8 +53,13 @@ public class Repo implements sungro.api.Repo {
 
             if (!param.getName().isBlank()) {
                 queryData.appendWhere("(U.FirstName like ? or U.LastName like ?) ");
-                queryData.addStringToWhere("%" + param.getName() + "%");
-                queryData.addStringToWhere("%" + param.getName() + "%");
+                queryData.addStringToWhere(param.getName() + "%");
+                queryData.addStringToWhere(param.getName() + "%");
+            }
+
+            if (!param.getEmail().isBlank()) {
+                queryData.appendWhere("U.Email like ? ");
+                queryData.addStringToWhere(param.getEmail() + "%");
             }
 
             if (!param.getIdNumber().isBlank()) {
@@ -118,6 +129,12 @@ public class Repo implements sungro.api.Repo {
         ResultForGetOneUser result = new ResultForGetOneUser();
 
         try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForGetOneUser.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
             try (PreparedStatement preparedStatement = connection.prepareStatement(
                     "select " +
                             "U.UserID, " +
@@ -172,6 +189,12 @@ public class Repo implements sungro.api.Repo {
         ResultForAddUser result = new ResultForAddUser();
 
         try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForAddUser.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
             if (param.getFirstName().isBlank()) {
                 result.setStatus(ResultForAddUser.Status.MISSING_FIRST_NAME);
                 return result;
@@ -263,21 +286,6 @@ public class Repo implements sungro.api.Repo {
             }
 
             try (PreparedStatement preparedStatement = connection.prepareStatement(
-                    "select exists(select 1 from Users where UserID = ?)"
-            )) {
-                preparedStatement.setInt(1, param.getCreatedBy());
-
-                try (ResultSet row = preparedStatement.executeQuery()) {
-                    row.next();
-
-                    if (row.getInt(1) == 0) {
-                        result.setStatus(ResultForAddUser.Status.INVALID_CREATED_BY);
-                        return result;
-                    }
-                }
-            }
-
-            try (PreparedStatement preparedStatement = connection.prepareStatement(
                     "insert into Users ( " +
                             "FirstName, LastName, Email, IDNumber, IDType, " +
                             "Role, PwHash, ProfilePic, Status, CreatedBy, " +
@@ -298,7 +306,7 @@ public class Repo implements sungro.api.Repo {
                 preparedStatement.setString(7, PasswordEncoder.encode(param.getPassword()));
                 preparedStatement.setBytes(8, param.getProfilePic());
                 preparedStatement.setString(9, param.getStatus());
-                preparedStatement.setInt(10, param.getCreatedBy());
+                preparedStatement.setInt(10, currentUser.getUserId());
                 preparedStatement.setString(11, LocalDateTime.now().toString());
 
                 preparedStatement.executeUpdate();
@@ -324,6 +332,12 @@ public class Repo implements sungro.api.Repo {
         ResultForDeleteUser result = new ResultForDeleteUser();
 
         try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForDeleteUser.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
             try (PreparedStatement preparedStatement = connection.prepareStatement(
                     "select exists(select 1 from Users where UserID = ?)"
             )) {
@@ -375,6 +389,12 @@ public class Repo implements sungro.api.Repo {
         ResultForSetUser result = new ResultForSetUser();
 
         try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForSetUser.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
             try (PreparedStatement preparedStatement = connection.prepareStatement(
                     "select exists(select 1 from Users where UserID = ?)"
             )) {
@@ -523,5 +543,26 @@ public class Repo implements sungro.api.Repo {
         }
 
         return result;
+    }
+
+    private User getCurrentUser(Connection connection, String sessionId) throws SQLException {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(
+                "select U.UserID, U.Role " +
+                        "from Sessions as S inner join Users as U on U.UserId = S.UserId " +
+                        "where S.SessionID = ?"
+        )) {
+            preparedStatement.setString(1, sessionId);
+
+            try (ResultSet row = preparedStatement.executeQuery()) {
+                if (!row.next()) {
+                    return null;
+                } else {
+                    User user = new User();
+                    user.setUserId(row.getInt(1));
+                    user.setRole(row.getString(2));
+                    return user;
+                }
+            }
+        }
     }
 }

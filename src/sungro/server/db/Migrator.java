@@ -22,6 +22,12 @@ public class Migrator {
                 m00_create_db(connection);
                 System.out.println("Done");
             }
+
+            if (migrations.size() < 2 || !migrations.get(1).equals("m01_create_sessions")) {
+                System.out.println("Running m01_create_sessions...");
+                m01_create_sessions(connection);
+                System.out.println("Done");
+            }
         }
     }
 
@@ -89,5 +95,29 @@ public class Migrator {
         preparedStatement.executeUpdate();
 
         statement.executeUpdate("insert into Migrations (Name) values ('m00_create_db')");
+    }
+
+    private void m01_create_sessions(Connection connection) throws SQLException {
+        Statement statement = connection.createStatement();
+
+        statement.executeUpdate("drop table if exists Sessions");
+
+        statement.executeUpdate(
+                "create table Sessions (" +
+                        "SessionID text primary key not null, " +
+                        "UserID integer references Users (UserID) on delete restrict on update restrict" +
+                        ")"
+        );
+
+        PreparedStatement preparedStatement = connection.prepareStatement(
+                "insert into Sessions (SessionID, UserID) values (?, ?)"
+        );
+
+        preparedStatement.setString(1, "0123456789abcdef");
+        preparedStatement.setInt(2, 1);
+
+        preparedStatement.executeUpdate();
+
+        statement.executeUpdate("insert into Migrations (Name) values ('m01_create_sessions')");
     }
 }
