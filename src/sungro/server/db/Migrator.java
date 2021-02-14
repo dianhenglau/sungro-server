@@ -177,7 +177,7 @@ public class Migrator {
             statement.executeUpdate(
                     "create table Sales (" +
                             "SaleID integer primary key not null, " +
-                            "SKU text references Stock (SKU) on delete restrict on update restrict, " +
+                            "StockTrxID integer references StockTrx (StockTrxID) on delete restrict on update restrict, " +
                             "UnitPrice integer not null, " +
                             "SoldQuantity integer not null, " +
                             "SoldBy integer references Users (UserID) on delete restrict on update restrict, " +
