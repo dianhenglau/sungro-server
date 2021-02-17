@@ -5,6 +5,7 @@ import sungro.server.PasswordEncoder;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.List;
 
 public class Migrator {
     private final Database database;
@@ -15,7 +16,12 @@ public class Migrator {
 
     public void migrate() throws SQLException {
         try (Connection connection = database.getConnection()) {
-            ArrayList<String> migrations = getMigrations(connection);
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("pragma foreign_keys = ON");
+                statement.executeUpdate("pragma case_sensitive_like = ON");
+            }
+
+            List<String> migrations = getMigrations(connection);
 
             if (migrations.size() < 1 || !migrations.get(0).equals("m00_create_db")) {
                 System.out.println("Running m00_create_db...");
@@ -32,6 +38,12 @@ public class Migrator {
             if (migrations.size() < 3 || !migrations.get(2).equals("m02_create_product_stock_trx_sales")) {
                 System.out.println("Running m02_create_product_stock_trx_sales...");
                 m02_create_product_stock_trx_sales(connection);
+                System.out.println("Done");
+            }
+
+            if (migrations.size() < 4 || !migrations.get(3).equals("m03_add_index")) {
+                System.out.println("Running m03_add_index...");
+                m03_add_index(connection);
                 System.out.println("Done");
             }
         }
@@ -112,7 +124,7 @@ public class Migrator {
             statement.executeUpdate(
                     "create table Sessions (" +
                             "SessionID text primary key not null, " +
-                            "UserID integer references Users (UserID) on delete restrict on update restrict" +
+                            "UserID integer not null references Users (UserID) on delete restrict on update restrict" +
                             ")"
             );
 
@@ -141,7 +153,7 @@ public class Migrator {
                             "ProductPrice integer not null, " +
                             "ProductPic blob not null, " +
                             "Status text not null check (Status in ('Available', 'Disabled')), " +
-                            "CreatedBy integer references Users (UserID) on delete restrict on update restrict, " +
+                            "CreatedBy integer not null references Users (UserID) on delete restrict on update restrict, " +
                             "CreatedOn text not null" +
                             ")"
             );
@@ -151,10 +163,10 @@ public class Migrator {
             statement.executeUpdate(
                     "create table Stock (" +
                             "SKU text primary key not null, " +
-                            "ProductID integer references Products (ProductID) on delete restrict on update restrict, " +
+                            "ProductID integer not null references Products (ProductID) on delete restrict on update restrict, " +
                             "ExpDate text not null, " +
                             "Quantity integer not null, " +
-                            "CreatedBy integer references Users (UserID) on delete restrict on update restrict, " +
+                            "CreatedBy integer not null references Users (UserID) on delete restrict on update restrict, " +
                             "CreatedOn text not null" +
                             ")"
             );
@@ -164,7 +176,7 @@ public class Migrator {
             statement.executeUpdate(
                     "create table StockTrx (" +
                             "StockTrxID integer primary key not null, " +
-                            "SKU text references Stock (SKU) on delete restrict on update restrict, " +
+                            "SKU text not null references Stock (SKU) on delete restrict on update restrict, " +
                             "QuantityVaried integer not null, " +
                             "Remark text not null, " +
                             "CreatedBy integer references Users (UserID) on delete restrict on update restrict, " +
@@ -177,15 +189,25 @@ public class Migrator {
             statement.executeUpdate(
                     "create table Sales (" +
                             "SaleID integer primary key not null, " +
-                            "StockTrxID integer references StockTrx (StockTrxID) on delete restrict on update restrict, " +
+                            "StockTrxID integer not null references StockTrx (StockTrxID) on delete restrict on update restrict, " +
                             "UnitPrice integer not null, " +
                             "SoldQuantity integer not null, " +
-                            "SoldBy integer references Users (UserID) on delete restrict on update restrict, " +
+                            "SoldBy integer not null references Users (UserID) on delete restrict on update restrict, " +
                             "SoldOn text not null" +
                             ")"
             );
 
             statement.executeUpdate("insert into Migrations (Name) values ('m02_create_product_stock_trx_sales')");
+        }
+    }
+
+    private void m03_add_index(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("drop index if exists IX_Stock_ProductID");
+            statement.executeUpdate("create index IX_Stock_ProductID on Stock (ProductID)");
+
+            statement.executeUpdate("drop index if exists IX_StockTrx_SKU");
+            statement.executeUpdate("create index IX_StockTrx_SKU on StockTrx (SKU)");
         }
     }
 }
