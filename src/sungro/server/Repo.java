@@ -10,6 +10,7 @@ import java.rmi.RemoteException;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class Repo implements sungro.api.Repo {
     private final Database database;
@@ -391,6 +392,66 @@ public class Repo implements sungro.api.Repo {
             }
 
             try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select exists(select 1 from Products where CreatedBy = ?)"
+            )) {
+                preparedStatement.setInt(1, param.getUserId());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    row.next();
+
+                    if (row.getInt(1) == 1) {
+                        result.setStatus(ResultForDeleteUser.Status.DEPENDED);
+                        return result;
+                    }
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select exists(select 1 from Stock where CreatedBy = ?)"
+            )) {
+                preparedStatement.setInt(1, param.getUserId());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    row.next();
+
+                    if (row.getInt(1) == 1) {
+                        result.setStatus(ResultForDeleteUser.Status.DEPENDED);
+                        return result;
+                    }
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select exists(select 1 from StockTrx where CreatedBy = ?)"
+            )) {
+                preparedStatement.setInt(1, param.getUserId());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    row.next();
+
+                    if (row.getInt(1) == 1) {
+                        result.setStatus(ResultForDeleteUser.Status.DEPENDED);
+                        return result;
+                    }
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select exists(select 1 from Sales where SoldBy = ?)"
+            )) {
+                preparedStatement.setInt(1, param.getUserId());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    row.next();
+
+                    if (row.getInt(1) == 1) {
+                        result.setStatus(ResultForDeleteUser.Status.DEPENDED);
+                        return result;
+                    }
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
                     "delete from Users where UserID = ?"
             )) {
                 preparedStatement.setInt(1, param.getUserId());
@@ -591,7 +652,7 @@ public class Repo implements sungro.api.Repo {
                             "C.UserID as CreatedByUserID, " +
                             "C.FirstName || ' ' || C.LastName as CreatedByUserName, " +
                             "U.CreatedOn " +
-                            "from Sessions as S" +
+                            "from Sessions as S " +
                             "inner join Users as U on U.UserID = S.UserID " +
                             "inner join Users as C on C.UserID = U.CreatedBy " +
                             "where S.SessionID = ?"
@@ -656,7 +717,7 @@ public class Repo implements sungro.api.Repo {
                             "C.FirstName || ' ' || C.LastName as CreatedByUserName, " +
                             "U.CreatedOn, " +
                             "U.PwHash " +
-                            "from Users as U" +
+                            "from Users as U " +
                             "inner join Users as C on C.UserID = U.CreatedBy " +
                             "where U.Email = ?"
             )) {
@@ -1171,12 +1232,17 @@ public class Repo implements sungro.api.Repo {
             queryData.appendFrom(
                     "from Stock as S " +
                             "inner join Users as C on C.UserID = S.CreatedBy " +
-                            "inner join Products as P on P.ProductID = S.ProductID"
+                            "inner join Products as P on P.ProductID = S.ProductID "
             );
 
             if (!param.getSku().isBlank()) {
                 queryData.appendWhere("S.SKU = ? ");
                 queryData.addStringToWhere(param.getSku());
+            }
+
+            if (param.getProductId() != 0) {
+                queryData.appendWhere("S.ProductID = ? ");
+                queryData.addIntToWhere(param.getProductId());
             }
 
             if (!param.getName().isBlank()) {
@@ -1199,7 +1265,7 @@ public class Repo implements sungro.api.Repo {
                 queryData.addStringToWhere(param.getExpiryDateTo().toString());
             }
 
-            queryData.appendRemaining("order by S.SKU desc limit 20 offset ? ");
+            queryData.appendRemaining("limit 20 offset ? ");
             queryData.addIntToRemaining((param.getPage() - 1) * 20);
 
             try (
@@ -1276,8 +1342,8 @@ public class Repo implements sungro.api.Repo {
                             "S.CreatedOn " +
                             "from Stock as S " +
                             "inner join Users as C on C.UserID = S.CreatedBy " +
-                            "inner join Products as P on P.ProductID = S.ProductID" +
-                            "where S.SKU = ?"
+                            "inner join Products as P on P.ProductID = S.ProductID " +
+                            "where S.SKU = ? "
             )) {
                 preparedStatement.setString(1, param.getSku());
 
@@ -1360,6 +1426,9 @@ public class Repo implements sungro.api.Repo {
                         stockTrx.setRemark(row.getString(4));
                         stockTrx.setCreatedByUserId(row.getInt(5));
                         stockTrx.setCreatedByUserName(row.getString(6));
+                        if (stockTrx.getCreatedByUserName() == null) {
+                            stockTrx.setCreatedByUserName("");
+                        }
                         stockTrx.setCreatedOn(LocalDateTime.parse(row.getString(7)));
 
                         result.getStockTrx().add(stockTrx);
@@ -1398,7 +1467,7 @@ public class Repo implements sungro.api.Repo {
                 try (ResultSet row = preparedStatement.executeQuery()) {
                     row.next();
 
-                    if (row.getInt(1) == 1) {
+                    if (row.getInt(1) == 0) {
                         result.setStatus(ResultForAddStock.Status.INVALID_PRODUCT_ID);
                         return result;
                     }
@@ -1565,7 +1634,7 @@ public class Repo implements sungro.api.Repo {
                 result.setStatus(ResultForSetStock.Status.INVALID_QUANTITY_VARIED);
                 return result;
             }
-            
+
             if (param.getRemark().isBlank()) {
                 result.setStatus(ResultForSetStock.Status.MISSING_REMARK);
                 return result;
@@ -1611,7 +1680,6 @@ public class Repo implements sungro.api.Repo {
 
     @Override
     public ResultForGetManySales getManySales(ParamForGetManySales param) throws RemoteException {
-        /*
         ResultForGetManySales result = new ResultForGetManySales();
 
         try (Connection connection = database.getConnection()) {
@@ -1626,12 +1694,13 @@ public class Repo implements sungro.api.Repo {
             queryData.appendSelect(
                     "select " +
                             "A.SaleID, " +
-                            "A.SKU, " +
+                            "O.SKU, " +
                             "P.ProductID, " +
                             "P.Name, " +
                             "P.Category, " +
                             "A.UnitPrice, " +
                             "A.SoldQuantity, " +
+                            "A.SoldQuantity * A.UnitPrice as SubTotalPrice, " +
                             "C.UserID as SoldByUserID, " +
                             "C.FirstName || ' ' || C.LastName as SoldByUserName, " +
                             "A.SoldOn "
@@ -1639,9 +1708,10 @@ public class Repo implements sungro.api.Repo {
 
             queryData.appendFrom(
                     "from Sales as A " +
-                            "inner join Stock as O on O.SKU = A.SKU " +
-                            "inner join Products as P on P.ProductID = O.ProductID " + 
-                            "inner join Users as C on C.UserID = S.SoldBy "
+                            "inner join StockTrx as T on T.StockTrxID = A.StockTrxID " +
+                            "inner join Stock as O on O.SKU = T.SKU " +
+                            "inner join Products as P on P.ProductID = O.ProductID " +
+                            "inner join Users as C on C.UserID = A.SoldBy "
             );
 
             if (param.getProductId() != 0) {
@@ -1649,17 +1719,22 @@ public class Repo implements sungro.api.Repo {
                 queryData.addIntToWhere(param.getProductId());
             }
 
-            if (!param.getCategory().isBlank()) {
-                queryData.appendWhere("P.Category = ? ");
-                queryData.addStringToWhere(param.getCategory());
+            if (!param.getSku().isBlank()) {
+                queryData.appendWhere("A.SKU = ? ");
+                queryData.addStringToWhere(param.getSku());
             }
 
-            if (!param.getStatus().isBlank()) {
-                queryData.appendWhere("P.Status = ? ");
-                queryData.addStringToWhere(param.getStatus());
+            if (param.getOnDate().compareTo(LocalDate.of(1970, 1, 1)) != 0) {
+                queryData.appendWhere("A.SoldOn like ? ");
+                queryData.addStringToWhere(param.getOnDate().toString() + "%");
             }
 
-            queryData.appendRemaining("order by P.ProductID desc limit 20 offset ? ");
+            if (param.getOnMonth().compareTo(LocalDate.of(1970, 1, 1)) != 0) {
+                queryData.appendWhere("A.SoldOn like ? ");
+                queryData.addStringToWhere(param.getOnMonth().format(DateTimeFormatter.ofPattern("yyyy-MM-%")));
+            }
+
+            queryData.appendRemaining("order by A.SaleID desc limit 20 offset ? ");
             queryData.addIntToRemaining((param.getPage() - 1) * 20);
 
             try (
@@ -1667,18 +1742,20 @@ public class Repo implements sungro.api.Repo {
                     ResultSet row = preparedStatement.executeQuery()
             ) {
                 while (row.next()) {
-                    Product product = new Product();
-                    product.setProductId(row.getInt(1));
-                    product.setName(row.getString(2));
-                    product.setCategory(row.getString(3));
-                    product.setProductPrice(BigDecimal.valueOf(row.getInt(4), 2));
-                    product.setProductPic(row.getBytes(5));
-                    product.setStatus(row.getString(6));
-                    product.setCreatedByUserId(row.getInt(7));
-                    product.setCreatedByUserName(row.getString(8));
-                    product.setCreatedOn(LocalDateTime.parse(row.getString(9)));
+                    Sale sale = new Sale();
+                    sale.setSaleId(row.getInt(1));
+                    sale.setSku(row.getString(2));
+                    sale.setProductId(row.getInt(3));
+                    sale.setProductName(row.getString(4));
+                    sale.setProductCategory(row.getString(5));
+                    sale.setUnitPrice(BigDecimal.valueOf(row.getInt(6), 2));
+                    sale.setSoldQuantity(row.getInt(7));
+                    sale.setSubTotalPrice(BigDecimal.valueOf(row.getInt(8), 2));
+                    sale.setSoldByUserId(row.getInt(9));
+                    sale.setSoldByUserName(row.getString(10));
+                    sale.setSoldOn(LocalDateTime.parse(row.getString(11)));
 
-                    result.getProducts().add(product);
+                    result.getSales().add(sale);
                 }
             }
 
@@ -1700,24 +1777,204 @@ public class Repo implements sungro.api.Repo {
 
         } catch (SQLException throwables) {
             throwables.printStackTrace();
-            result.setStatus(ResultForGetManyProducts.Status.SERVER_ERROR);
+            result.setStatus(ResultForGetManySales.Status.SERVER_ERROR);
         }
 
         result.setCurrentPage(param.getPage());
 
         return result;
-        */
-        return null;
     }
 
     @Override
     public ResultForAddSale addSale(ParamForAddSale param) throws RemoteException {
-        return null;
+        ResultForAddSale result = new ResultForAddSale();
+
+        try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForAddSale.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
+            if (param.getSku().isBlank()) {
+                result.setStatus(ResultForAddSale.Status.MISSING_SKU);
+                return result;
+            }
+
+            int unitPrice;
+            int remainingQuantity;
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select P.ProductPrice, O.Quantity " +
+                            "from Stock as O " +
+                            "inner join Products as P on P.ProductID = O.ProductID " +
+                            "where O.SKU = ?"
+            )) {
+                preparedStatement.setString(1, param.getSku());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    if (row.next()) {
+                        unitPrice = row.getInt(1);
+                        remainingQuantity = row.getInt(2);
+                    } else {
+                        result.setStatus(ResultForAddSale.Status.INVALID_SKU);
+                        return result;
+                    }
+                }
+            }
+
+            if (param.getSoldQuantity() <= 0 || param.getSoldQuantity() > remainingQuantity) {
+                result.setStatus(ResultForAddSale.Status.INVALID_QUANTITY);
+                return result;
+            }
+
+            String now = LocalDateTime.now().toString();
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "insert into StockTrx ( " +
+                            "SKU, QuantityVaried, Remark, CreatedBy, CreatedOn " +
+                            ") " +
+                            "values ( " +
+                            "?, ?, ?, ?, ? " +
+                            ")"
+            )) {
+                preparedStatement.setString(1, param.getSku());
+                preparedStatement.setInt(2, -param.getSoldQuantity());
+                preparedStatement.setString(3, "");
+                preparedStatement.setInt(4, currentUser.getUserId());
+                preparedStatement.setString(5, now);
+
+                preparedStatement.executeUpdate();
+            }
+
+            int newStockTrxId;
+
+            try (Statement statement = connection.createStatement()) {
+                try (ResultSet row = statement.executeQuery("select last_insert_rowid()")) {
+                    row.next();
+                    newStockTrxId = row.getInt(1);
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "insert into Sales ( " +
+                            "StockTrxID, UnitPrice, SoldQuantity, SoldBy, SoldOn " +
+                            ") " +
+                            "values ( " +
+                            "?, ?, ?, ?, ? " +
+                            ")"
+            )) {
+                preparedStatement.setInt(1, newStockTrxId);
+                preparedStatement.setInt(2, unitPrice);
+                preparedStatement.setInt(3, param.getSoldQuantity());
+                preparedStatement.setInt(4, currentUser.getUserId());
+                preparedStatement.setString(5, now);
+
+                preparedStatement.executeUpdate();
+            }
+
+            try (Statement statement = connection.createStatement()) {
+                try (ResultSet row = statement.executeQuery("select last_insert_rowid()")) {
+                    row.next();
+                    result.setNewSaleId(row.getInt(1));
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "update StockTrx set Remark = ? where StockTrxID = ?"
+            )) {
+                preparedStatement.setString(1, "Sold. Refer to Sale ID " + result.getNewSaleId() + ".");
+                preparedStatement.setInt(2, newStockTrxId);
+
+                preparedStatement.executeUpdate();
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "update Stock set Quantity = ? where SKU = ?"
+            )) {
+                preparedStatement.setInt(1, remainingQuantity - param.getSoldQuantity());
+                preparedStatement.setString(2, param.getSku());
+
+                preparedStatement.executeUpdate();
+            }
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+            result.setStatus(ResultForAddSale.Status.SERVER_ERROR);
+        }
+
+        return result;
     }
 
     @Override
     public ResultForDeleteSale deleteSale(ParamForDeleteSale param) throws RemoteException {
-        return null;
+        ResultForDeleteSale result = new ResultForDeleteSale();
+
+        try (Connection connection = database.getConnection()) {
+            User currentUser = getCurrentUser(connection, param.getSessionId());
+            if (currentUser == null) {
+                result.setStatus(ResultForDeleteSale.Status.INVALID_SESSION_ID);
+                return result;
+            }
+
+            int stockTrxId;
+            int soldQuantity;
+            String sku;
+            int remainingQuantity;
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "select A.StockTrxID, A.SoldQuantity, T.SKU, O.Quantity " +
+                            "from Sales as A " +
+                            "inner join StockTrx as T on T.StockTrxID = A.StockTrxID " +
+                            "inner join Stock as O on O.SKU = T.SKU " +
+                            "where A.SaleID = ?"
+            )) {
+                preparedStatement.setInt(1, param.getSaleId());
+
+                try (ResultSet row = preparedStatement.executeQuery()) {
+                    if (row.next()) {
+                        stockTrxId = row.getInt(1);
+                        soldQuantity = row.getInt(2);
+                        sku = row.getString(3);
+                        remainingQuantity = row.getInt(4);
+                    } else {
+                        result.setStatus(ResultForDeleteSale.Status.NOT_FOUND);
+                        return result;
+                    }
+                }
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "delete from Sales where SaleID = ?"
+            )) {
+                preparedStatement.setInt(1, param.getSaleId());
+
+                preparedStatement.executeUpdate();
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "delete from StockTrx where StockTrxID = ?"
+            )) {
+                preparedStatement.setInt(1, stockTrxId);
+
+                preparedStatement.executeUpdate();
+            }
+
+            try (PreparedStatement preparedStatement = connection.prepareStatement(
+                    "update Stock set Quantity = ? where SKU = ?"
+            )) {
+                preparedStatement.setInt(1, remainingQuantity + soldQuantity);
+                preparedStatement.setString(2, sku);
+
+                preparedStatement.executeUpdate();
+            }
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+            result.setStatus(ResultForDeleteSale.Status.SERVER_ERROR);
+        }
+
+        return result;
     }
 
     private User getCurrentUser(Connection connection, String sessionId) throws SQLException {
