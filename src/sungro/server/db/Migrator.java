@@ -208,6 +208,8 @@ public class Migrator {
 
             statement.executeUpdate("drop index if exists IX_StockTrx_SKU");
             statement.executeUpdate("create index IX_StockTrx_SKU on StockTrx (SKU)");
+
+            statement.executeUpdate("insert into Migrations (Name) values ('m03_add_index')");
         }
     }
 }
