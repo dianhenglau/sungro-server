@@ -1635,10 +1635,12 @@ public class Repo implements sungro.api.Repo {
                 return result;
             }
 
+            /*
             if (param.getRemark().isBlank()) {
                 result.setStatus(ResultForSetStock.Status.MISSING_REMARK);
                 return result;
             }
+            */
 
             UpdateBuilder updateBuilder = new UpdateBuilder();
             updateBuilder.appendUpdate("update Stock ");
